@@ -24,6 +24,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="VWAP / EMA8 Screener", layout="wide")
 
@@ -198,13 +199,42 @@ with st.sidebar:
         "Filter",
         ["All", "Above Both (Bullish)", "Below Both (Bearish)", "Mixed", "No Data"],
     )
-    if st.button("🔄 Refresh Data"):
+
+    st.divider()
+    st.subheader("Auto-Refresh")
+    autorefresh_choice = st.selectbox(
+        "Refresh every",
+        ["Off", "1 min", "2 min", "3 min", "4 min", "5 min"],
+        index=0,
+        help="Automatically re-fetches data and reruns the app at this interval.",
+    )
+
+    if st.button("🔄 Refresh Data Now"):
         st.cache_data.clear()
         st.rerun()
+
     st.caption(
         "⚠️ 1-minute bars are only available for the last ~7 trading days "
         "and only populate while US markets are open."
     )
+
+# Map the selection to milliseconds and trigger the autorefresh timer.
+_AUTOREFRESH_MS = {
+    "Off": None,
+    "1 min": 1 * 60 * 1000,
+    "2 min": 2 * 60 * 1000,
+    "3 min": 3 * 60 * 1000,
+    "4 min": 4 * 60 * 1000,
+    "5 min": 5 * 60 * 1000,
+}
+_interval_ms = _AUTOREFRESH_MS[autorefresh_choice]
+if _interval_ms is not None:
+    # st_autorefresh triggers a full app rerun every `interval_ms` ms.
+    # The counter it returns is unused but kept so Streamlit tracks the component state.
+    _refresh_count = st_autorefresh(interval=_interval_ms, key="data_autorefresh")
+    st.sidebar.caption(f"Auto-refresh ON — every {autorefresh_choice} (tick #{_refresh_count})")
+else:
+    st.sidebar.caption("Auto-refresh is OFF")
 
 results = []
 data_cache: dict[str, pd.DataFrame] = {}
