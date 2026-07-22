@@ -118,6 +118,26 @@ def get_condition(df: pd.DataFrame) -> str:
     return "Mixed"
 
 
+def get_strength(df: pd.DataFrame, condition: str) -> str:
+    """
+    Classify Bullish/Bearish signals as "Strong" when the trend is aligned:
+      - Strong Bullish: price > EMA8 > VWAP  (short-term trend also above VWAP)
+      - Strong Bearish: price < EMA8 < VWAP  (short-term trend also below VWAP)
+    Anything else (including Mixed/No Data) is left blank.
+    """
+    if df.empty or condition not in ("Above Both (Bullish)", "Below Both (Bearish)"):
+        return ""
+    last = df.iloc[-1]
+    vwap, ema8 = last["VWAP"], last["EMA8"]
+    if pd.isna(vwap) or pd.isna(ema8):
+        return ""
+    if condition == "Above Both (Bullish)" and ema8 > vwap:
+        return "Strong Bullish"
+    if condition == "Below Both (Bearish)" and ema8 < vwap:
+        return "Strong Bearish"
+    return ""
+
+
 def plot_chart(df: pd.DataFrame, name: str, ticker: str) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(
@@ -197,12 +217,13 @@ for i, (name, ticker) in enumerate(items):
         if raw.empty:
             results.append(
                 {"Company": name, "Ticker": ticker, "Price": None,
-                 "VWAP": None, "EMA8": None, "Condition": "No Data"}
+                 "VWAP": None, "EMA8": None, "Condition": "No Data", "Strength": ""}
             )
         else:
             df = compute_indicators(raw)
             data_cache[ticker] = df
             last = df.iloc[-1]
+            condition = get_condition(df)
             results.append(
                 {
                     "Company": name,
@@ -210,13 +231,14 @@ for i, (name, ticker) in enumerate(items):
                     "Price": round(float(last["Close"]), 2),
                     "VWAP": round(float(last["VWAP"]), 2) if pd.notna(last["VWAP"]) else None,
                     "EMA8": round(float(last["EMA8"]), 2) if pd.notna(last["EMA8"]) else None,
-                    "Condition": get_condition(df),
+                    "Condition": condition,
+                    "Strength": get_strength(df, condition),
                 }
             )
     except Exception:
         results.append(
             {"Company": name, "Ticker": ticker, "Price": None,
-             "VWAP": None, "EMA8": None, "Condition": "Error"}
+             "VWAP": None, "EMA8": None, "Condition": "Error", "Strength": ""}
         )
     progress.progress((i + 1) / len(items), text=f"Fetching {ticker}...")
 
@@ -243,6 +265,39 @@ st.dataframe(
     width='stretch',
     hide_index=True,
 )
+
+st.divider()
+
+# ------------------------------------------------------------------
+# Strong Bullish / Strong Bearish table
+#   Strong Bullish: price > EMA8 > VWAP (trend aligned above VWAP)
+#   Strong Bearish: price < EMA8 < VWAP (trend aligned below VWAP)
+#   Mixed / No Data / Error rows are excluded entirely.
+# ------------------------------------------------------------------
+df_strong = df_results[df_results["Strength"].isin(["Strong Bullish", "Strong Bearish"])].copy()
+df_strong = df_strong.drop(columns=["Condition"]).rename(columns={"Strength": "Signal"})
+
+
+def _color_strength(val):
+    return {
+        "Strong Bullish": "background-color:#1b5e20;color:white;font-weight:bold",
+        "Strong Bearish": "background-color:#b71c1c;color:white;font-weight:bold",
+    }.get(val, "")
+
+
+st.subheader(f"🚀 Strong Bullish / Strong Bearish ({len(df_strong)} stocks)")
+st.caption(
+    "Strong Bullish = price > EMA(8) > VWAP. Strong Bearish = price < EMA(8) < VWAP. "
+    "Mixed signals are excluded from this table."
+)
+if df_strong.empty:
+    st.info("No stocks currently meet the Strong Bullish / Strong Bearish criteria.")
+else:
+    st.dataframe(
+        df_strong.sort_values("Signal").style.map(_color_strength, subset=["Signal"]),
+        width='stretch',
+        hide_index=True,
+    )
 
 st.divider()
 st.subheader(f"📈 Charts ({len(df_display)} stocks)")
