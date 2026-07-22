@@ -245,14 +245,25 @@ st.dataframe(
 )
 
 st.divider()
-st.subheader("📈 Chart Viewer")
+st.subheader(f"📈 Charts ({len(df_display)} stocks)")
+st.caption("Showing charts for every stock in the filtered list above. "
+           "Click a section to expand/collapse it.")
 
-chart_name = st.selectbox("Select a stock to view its chart", list(STOCKS.keys()))
-chart_ticker = STOCKS[chart_name]
+for _, row in df_display.iterrows():
+    name, ticker, condition = row["Company"], row["Ticker"], row["Condition"]
+    badge = {
+        "Above Both (Bullish)": "🟢",
+        "Below Both (Bearish)": "🔴",
+        "Mixed": "🟡",
+    }.get(condition, "⚪")
 
-if chart_ticker in data_cache:
-    st.plotly_chart(plot_chart(data_cache[chart_ticker], chart_name, chart_ticker),
-                     width='stretch')
-else:
-    st.warning("No intraday data available for this stock right now "
-               "(market may be closed, or data hasn't populated yet).")
+    with st.expander(f"{badge} {name} ({ticker}) — {condition}", expanded=True):
+        if ticker in data_cache:
+            st.plotly_chart(
+                plot_chart(data_cache[ticker], name, ticker),
+                width="stretch",
+                key=f"chart_{ticker}",
+            )
+        else:
+            st.warning("No intraday data available for this stock right now "
+                       "(market may be closed, or data hasn't populated yet).")
